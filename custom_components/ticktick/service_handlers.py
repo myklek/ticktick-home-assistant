@@ -6,6 +6,10 @@ import logging
 from typing import Any, TypeVar
 from zoneinfo import ZoneInfo
 
+from custom_components.ticktick.ticktick_api_python.models.habit import (
+    HabitCheckinData,
+    HabitCheckinStatus,
+)
 from custom_components.ticktick.ticktick_api_python.models.task import (
     Task,
     TaskPriority,
@@ -14,7 +18,8 @@ from custom_components.ticktick.ticktick_api_python.models.task import (
 from homeassistant.core import ServiceCall
 from homeassistant.util import dt as dt_util
 
-from .const import PROJECT_ID, TASK_ID
+from .const import HABIT_ID, PROJECT_ID, TASK_ID
+from .coordinator import today_stamp
 from .ticktick_api_python.ticktick_api import TickTickAPIClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -154,6 +159,79 @@ async def handle_get_projects(client: TickTickAPIClient) -> Callable:
     return await _create_handler(client.get_projects)
 
 
+# === Habit Scope ===
+async def handle_get_habits(client: TickTickAPIClient) -> Callable:
+    """Return a handler function for the 'get_habits' endpoint."""
+    return await _create_handler(client.get_habits)
+
+
+async def handle_get_habit_checkins(client: TickTickAPIClient) -> Callable:
+    """Return a handler function for the 'get_habit_checkins' endpoint."""
+
+    async def handler(call: ServiceCall) -> dict[str, Any]:
+        """Handle the get_habit_checkins service call."""
+        habit_ids = call.data.get("habitIds")
+        if isinstance(habit_ids, str):
+            habit_ids = habit_ids.split(",")
+        habit_ids = [habit_id.strip() for habit_id in habit_ids or [] if habit_id]
+
+        try:
+            if not habit_ids:
+                habit_ids = [habit.id for habit in await client.get_habits()]
+            response = await client.get_habit_checkins(
+                habit_ids,
+                _to_stamp(call.data.get("from")),
+                _to_stamp(call.data.get("to")),
+                returnAsJson=True,
+            )
+            return {"data": response}  # noqa: TRY300
+        except Exception as e:  # noqa: BLE001
+            return {"error": str(e)}
+
+    return handler
+
+
+async def handle_checkin_habit(client: TickTickAPIClient) -> Callable:
+    """Return a handler function for the 'checkin_habit' endpoint."""
+
+    async def handler(call: ServiceCall) -> dict[str, Any]:
+        """Handle the checkin_habit service call."""
+        habit_id = call.data.get(HABIT_ID)
+        if not habit_id:
+            return {"error": f"{HABIT_ID} is required"}
+
+        try:
+            habit = await client.get_habit(habit_id)
+            value = call.data.get("value")
+            status = call.data.get("status")
+            status = HabitCheckinStatus[status] if status else None
+
+            if value is None:
+                value = habit.goal if status in (None, HabitCheckinStatus.COMPLETED) else 0.0
+            if status is None:
+                status = (
+                    HabitCheckinStatus.COMPLETED
+                    if value >= habit.goal
+                    else HabitCheckinStatus.UNCHECKED
+                )
+
+            checkin = HabitCheckinData(
+                stamp=_to_stamp(call.data.get("date")),
+                value=value,
+                goal=habit.goal,
+                status=status,
+            )
+            response = await client.upsert_habit_checkin(
+                habit_id, checkin, returnAsJson=True
+            )
+            return {"data": response}  # noqa: TRY300
+        except Exception as e:  # noqa: BLE001
+            _LOGGER.error("Error checking in habit: %s", str(e))
+            return {"error": str(e)}
+
+    return handler
+
+
 T = TypeVar("T")
 
 
@@ -206,3 +284,10 @@ def _sanitize_date(date: str, timeZone: str | None) -> str:
     aware_dt = naive_dt.replace(tzinfo=zone_info)
 
     return aware_dt.strftime("%Y-%m-%dT%H:%M:%S%z")
+
+
+def _to_stamp(date: str | None) -> int:
+    """Convert a 'yyyy-MM-dd' date string to TickTick YYYYMMDD stamp, defaulting to today."""
+    if not date:
+        return today_stamp()
+    return int(datetime.strptime(str(date)[:10], "%Y-%m-%d").strftime("%Y%m%d"))

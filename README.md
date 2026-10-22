@@ -18,6 +18,8 @@ Integration implements [TickTick Open API](https://developer.ticktick.com/docs#/
 4. In Settings → Devices & services, use the dotted menu to create new application credentials (`/config/application_credentials`). Enter the OAuth client ID and secret from the TickTick app here.
 5. Your TickTick Lists should now each turn up as a todo list in Home Assistant.
 
+Your active TickTick Habits show up as a `Habits` todo list. A habit is checked off when it is done today. Checking or unchecking it in Home Assistant checks in or unchecks the habit in TickTick for today. Numeric habits show today's progress, i.e. `3/8 Cup`, in the description.
+
 If you don’t want all of your lists to show up in the todo list app, you can disable selected lists in the entities list
 (enter selection mode → Disable selected).
 
@@ -30,6 +32,10 @@ Get, Create, Update, Delete, Complete Task
 ### Project Services
 
 Get (Create, Update, Delete are missing for now)
+
+### Habit Services
+
+Get Habits, Get Habit Check-ins, Check In Habit
 
 ## Left to be done:
 

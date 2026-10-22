@@ -24,3 +24,12 @@ DELETE_TASK = GET_TASK
 # === Project Scope ===
 GET_PROJECTS = f"{BASE_API_URL}/project"
 GET_PROJECTS_WITH_TASKS = f"{BASE_API_URL}/project/{{{PROJECT_ID}}}/data"
+
+# === Habit Scope ===
+HABIT_ID = "habitId"
+
+GET_HABITS = f"{BASE_API_URL}/habit"
+GET_HABIT = f"{BASE_API_URL}/habit/{{{HABIT_ID}}}"
+GET_HABIT_SECTIONS = f"{BASE_API_URL}/habit/sections"
+GET_HABIT_CHECKINS = f"{BASE_API_URL}/habit/checkins"
+UPSERT_HABIT_CHECKIN = f"{BASE_API_URL}/habit/{{{HABIT_ID}}}/checkin"

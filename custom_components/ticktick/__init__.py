@@ -13,11 +13,14 @@ from homeassistant.helpers import aiohttp_client
 
 from . import api
 from .const import DOMAIN
-from .coordinator import TickTickCoordinator
+from .coordinator import TickTickCoordinator, TickTickData, TickTickHabitCoordinator
 from .service_handlers import (
+    handle_checkin_habit,
     handle_complete_task,
     handle_create_task,
     handle_delete_task,
+    handle_get_habit_checkins,
+    handle_get_habits,
     handle_get_projects,
     handle_get_task,
     handle_update_task,
@@ -77,13 +80,22 @@ async def register_coordiantor(
     entry: TickTickConfigEntry,
     access_token: str,
 ) -> None:
-    """Register Coordinator for TickTick Todo Entity."""
+    """Register Coordinators for TickTick Todo Entities."""
     coordinator = TickTickCoordinator(
         hass, _LOGGER, entry, SCAN_INTERVAL, tickTickApiClient, access_token
     )
     await coordinator.async_config_entry_first_refresh()
+
+    habit_coordinator = TickTickHabitCoordinator(
+        hass, _LOGGER, entry, SCAN_INTERVAL, tickTickApiClient
+    )
+    # Habits are optional, so failing to fetch them must not block task setup
+    await habit_coordinator.async_refresh()
+
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN][entry.entry_id] = coordinator
+    hass.data[DOMAIN][entry.entry_id] = TickTickData(
+        tasks=coordinator, habits=habit_coordinator
+    )
 
 
 async def register_services(
@@ -128,6 +140,25 @@ async def register_services(
         "get_projects",
         await handle_get_projects(tickTickApiClient),
         supports_response=SupportsResponse.ONLY,
+    )
+
+    hass.services.async_register(
+        DOMAIN,
+        "get_habits",
+        await handle_get_habits(tickTickApiClient),
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "get_habit_checkins",
+        await handle_get_habit_checkins(tickTickApiClient),
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN,
+        "checkin_habit",
+        await handle_checkin_habit(tickTickApiClient),
+        supports_response=SupportsResponse.OPTIONAL,
     )
     # hass.services.async_register(DOMAIN, 'get_project', await handle_my_service)
     # hass.services.async_register(DOMAIN, 'get_detailed_project', handle_my_service(tickTickApiClient))

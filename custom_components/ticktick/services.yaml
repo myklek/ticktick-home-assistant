@@ -306,3 +306,65 @@ update_task:
         number:
           min: 0
           max: 1000
+get_habits:
+  name: Get Habits
+  description: "Returns a list of your habits from TickTick."
+get_habit_checkins:
+  name: Get Habit Check-ins
+  description: "Returns check-ins of habits between two dates from TickTick."
+  fields:
+    habitIds:
+      name: Habit IDs
+      description: "IDs of the habits in TickTick. All habits are used when empty."
+      example: 63b7bebb91c0a5474805fcd4
+      selector:
+        text:
+          multiple: true
+    from:
+      name: From
+      description: "First date of the range. Defaults to today."
+      example: "2026-04-01"
+      selector:
+        date: {}
+    to:
+      name: To
+      description: "Last date of the range. Defaults to today."
+      example: "2026-04-07"
+      selector:
+        date: {}
+checkin_habit:
+  name: Check In Habit
+  description: "Creates or updates a habit check-in in TickTick."
+  fields:
+    habitId:
+      name: Habit ID
+      description: ID of the habit in TickTick.
+      required: true
+      example: 63b7bebb91c0a5474805fcd4
+      selector:
+        text: null
+    date:
+      name: Date
+      description: "Date of the check-in. Defaults to today."
+      example: "2026-04-07"
+      selector:
+        date: {}
+    value:
+      name: Value
+      description: "Check-in value, i.e. amount for numeric habits. Defaults to the habit goal when completing."
+      example: 1
+      selector:
+        number:
+          min: 0
+          max: 100000
+          step: any
+          mode: box
+    status:
+      name: Status
+      description: "Status of the check-in. When omitted, it is completed if value reaches the habit goal."
+      selector:
+        select:
+          options:
+            - COMPLETED
+            - UNCOMPLETED
+            - UNCHECKED

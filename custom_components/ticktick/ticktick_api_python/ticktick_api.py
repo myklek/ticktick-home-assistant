@@ -1,16 +1,25 @@
 """TickTick API Client."""
 
+import json
+from urllib.parse import urlencode
+
 from aiohttp import ClientResponse, ClientSession
 from custom_components.ticktick.const import (
     COMPLETE_TASK,
     CREATE_TASK,
     DELETE_TASK,
+    GET_HABIT,
+    GET_HABIT_CHECKINS,
+    GET_HABIT_SECTIONS,
+    GET_HABITS,
     GET_PROJECTS,
     GET_PROJECTS_WITH_TASKS,
     GET_TASK,
     UPDATE_TASK,
+    UPSERT_HABIT_CHECKIN,
 )
 
+from .models.habit import Habit, HabitCheckin, HabitCheckinData
 from .models.project import Kind, Project
 from .models.project_with_tasks import ProjectWithTasks
 from .models.task import Task
@@ -85,6 +94,58 @@ class TickTickAPIClient:
         """Return a dict of tasks for project."""
         response = await self._get(GET_PROJECTS_WITH_TASKS.format(projectId=projectId))
         return ProjectWithTasks.from_dict(response)
+
+    # === Habit Scope ===
+    async def get_habits(self, returnAsJson: bool = False) -> list[Habit]:
+        """Return all habits."""
+        response = await self._get(GET_HABITS)
+        if returnAsJson:
+            return response
+
+        return [Habit.from_dict(habit) for habit in response]
+
+    async def get_habit(self, habitId: str, returnAsJson: bool = False) -> Habit:
+        """Return a habit."""
+        response = await self._get(GET_HABIT.format(habitId=habitId))
+        if returnAsJson:
+            return response
+
+        return Habit.from_dict(response)
+
+    async def get_habit_sections(self, returnAsJson: bool = True) -> list[dict]:
+        """Return habit sections."""
+        return await self._get(GET_HABIT_SECTIONS)
+
+    async def get_habit_checkins(
+        self,
+        habitIds: list[str],
+        fromStamp: int,
+        toStamp: int,
+        returnAsJson: bool = False,
+    ) -> list[HabitCheckin]:
+        """Return check-ins of habits between two YYYYMMDD date stamps."""
+        query = urlencode(
+            {"habitIds": ",".join(habitIds), "from": fromStamp, "to": toStamp},
+            safe=",",
+        )
+        response = await self._get(f"{GET_HABIT_CHECKINS}?{query}")
+        if returnAsJson:
+            return response
+
+        return [HabitCheckin.from_dict(checkin) for checkin in response]
+
+    async def upsert_habit_checkin(
+        self, habitId: str, checkin: HabitCheckinData, returnAsJson: bool = False
+    ) -> HabitCheckin:
+        """Create or update a habit check-in."""
+        response = await self._post(
+            UPSERT_HABIT_CHECKIN.format(habitId=habitId),
+            json.dumps(checkin.to_dict()),
+        )
+        if returnAsJson:
+            return response
+
+        return HabitCheckin.from_dict(response)
 
     async def _get(self, url: str) -> ClientResponse:
         response = await self._session.get(f"https://{url}", headers=self._headers)

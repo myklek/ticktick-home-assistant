@@ -2,7 +2,17 @@ import asyncio
 from typing import Any
 from datetime import datetime
 
-from custom_components.ticktick.coordinator import TickTickCoordinator
+from custom_components.ticktick.coordinator import (
+    HabitWithCheckin,
+    TickTickCoordinator,
+    TickTickData,
+    TickTickHabitCoordinator,
+    today_stamp,
+)
+from custom_components.ticktick.ticktick_api_python.models.habit import (
+    HabitCheckinData,
+    HabitCheckinStatus,
+)
 from custom_components.ticktick.ticktick_api_python.models.task import Task, TaskStatus
 
 from homeassistant.components.todo import (
@@ -23,12 +33,14 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up the TickTick todo platform config entry."""
-    coordinator: TickTickCoordinator = hass.data[DOMAIN][entry.entry_id]
+    data: TickTickData = hass.data[DOMAIN][entry.entry_id]
+    coordinator = data.tasks
     projects = await coordinator.async_get_projects()
     async_add_entities(
         TickTickTodoListEntity(coordinator, entry.entry_id, project.id, project.name)
         for project in projects
     )
+    async_add_entities([TickTickHabitListEntity(data.habits, entry.entry_id)])
 
 
 def _format_date_for_comparison(date_value) -> str:
@@ -194,6 +206,99 @@ class TickTickTodoListEntity(CoordinatorEntity[TickTickCoordinator], TodoListEnt
                 for uid in uids
             ]
         )
+        await self.coordinator.async_refresh()
+
+    async def async_added_to_hass(self) -> None:
+        """When entity is added to hass update state from existing coordinator data."""
+        await super().async_added_to_hass()
+        self._handle_coordinator_update()
+
+
+def _map_habit(habit_with_checkin: HabitWithCheckin) -> TodoItem:
+    """Convert a Habit with today's check-in to TodoItem."""
+    habit = habit_with_checkin.habit
+    checkin = habit_with_checkin.checkin
+    description = habit.encouragement or None
+    if habit.type == "Real":
+        value = checkin.value if checkin else 0
+        progress = f"{value:g}/{habit.goal:g} {habit.unit or ''}".strip()
+        description = f"{progress}\n{description}" if description else progress
+
+    return TodoItem(
+        uid=habit.id,
+        summary=habit.name,
+        status=TodoItemStatus.COMPLETED
+        if checkin and checkin.is_completed
+        else TodoItemStatus.NEEDS_ACTION,
+        description=description,
+    )
+
+
+class TickTickHabitListEntity(
+    CoordinatorEntity[TickTickHabitCoordinator], TodoListEntity
+):
+    """A TickTick TodoListEntity with habits, checked off when done today."""
+
+    _attr_supported_features = TodoListEntityFeature.UPDATE_TODO_ITEM
+
+    def __init__(
+        self,
+        coordinator: TickTickHabitCoordinator,
+        config_entry_id: str,
+    ) -> None:
+        """Initialize TickTickHabitListEntity."""
+        super().__init__(coordinator=coordinator)
+        self._attr_unique_id = f"{config_entry_id}-habits"
+        self._attr_name = "Habits"
+        self._attr_icon = "mdi:calendar-check"
+        self._attr_todo_items = []
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        if self.coordinator.data is None:
+            self._attr_todo_items = None
+        else:
+            self._attr_todo_items = [
+                _map_habit(habit_with_checkin)
+                for habit_with_checkin in self.coordinator.data
+            ]
+
+        super()._handle_coordinator_update()
+
+    async def async_update_todo_item(self, item: TodoItem) -> None:
+        """Check in or uncheck a habit for today."""
+        habit_with_checkin = next(
+            (
+                habit_with_checkin
+                for habit_with_checkin in self.coordinator.data or ()
+                if habit_with_checkin.habit.id == item.uid
+            ),
+            None,
+        )
+        if habit_with_checkin is None:
+            raise ValueError(f"Habit {item.uid} not found.")
+
+        habit = habit_with_checkin.habit
+        completed = item.status == TodoItemStatus.COMPLETED
+        was_completed = bool(
+            habit_with_checkin.checkin and habit_with_checkin.checkin.is_completed
+        )
+
+        if completed != was_completed:
+            await self.coordinator.api.upsert_habit_checkin(
+                habit.id,
+                HabitCheckinData(
+                    stamp=today_stamp(),
+                    value=habit.goal if completed else 0.0,
+                    goal=habit.goal,
+                    status=HabitCheckinStatus.COMPLETED
+                    if completed
+                    else HabitCheckinStatus.UNCHECKED,
+                ),
+                returnAsJson=True,
+            )
+
         await self.coordinator.async_refresh()
 
     async def async_added_to_hass(self) -> None:

@@ -14,6 +14,15 @@
         },
         "get_projects": {
             "service": "mdi:list-box"
+        },
+        "get_habits": {
+            "service": "mdi:calendar-check"
+        },
+        "get_habit_checkins": {
+            "service": "mdi:calendar-search"
+        },
+        "checkin_habit": {
+            "service": "mdi:check-circle"
         }
     }
 }
