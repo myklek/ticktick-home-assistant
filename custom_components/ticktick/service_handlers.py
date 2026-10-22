@@ -1,7 +1,7 @@
 """Service Handlers for TickTick Integration."""
 
 from collections.abc import Awaitable, Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
 from typing import Any, TypeVar
 from zoneinfo import ZoneInfo
@@ -19,7 +19,7 @@ from homeassistant.core import ServiceCall
 from homeassistant.util import dt as dt_util
 
 from .const import HABIT_ID, PROJECT_ID, TASK_ID
-from .coordinator import today_stamp
+from .coordinator import date_stamp
 from .ticktick_api_python.ticktick_api import TickTickAPIClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -178,10 +178,11 @@ async def handle_get_habit_checkins(client: TickTickAPIClient) -> Callable:
         try:
             if not habit_ids:
                 habit_ids = [habit.id for habit in await client.get_habits()]
+            # TickTick excludes the `to` stamp, so add a day to make it inclusive
             response = await client.get_habit_checkins(
                 habit_ids,
                 _to_stamp(call.data.get("from")),
-                _to_stamp(call.data.get("to")),
+                _to_stamp(call.data.get("to"), days=1),
                 returnAsJson=True,
             )
             return {"data": response}  # noqa: TRY300
@@ -286,8 +287,11 @@ def _sanitize_date(date: str, timeZone: str | None) -> str:
     return aware_dt.strftime("%Y-%m-%dT%H:%M:%S%z")
 
 
-def _to_stamp(date: str | None) -> int:
+def _to_stamp(date: str | None, days: int = 0) -> int:
     """Convert a 'yyyy-MM-dd' date string to TickTick YYYYMMDD stamp, defaulting to today."""
-    if not date:
-        return today_stamp()
-    return int(datetime.strptime(str(date)[:10], "%Y-%m-%d").strftime("%Y%m%d"))
+    day = (
+        datetime.strptime(str(date)[:10], "%Y-%m-%d").date()
+        if date
+        else dt_util.now().date()
+    )
+    return date_stamp(day + timedelta(days=days))

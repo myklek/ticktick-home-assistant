@@ -219,7 +219,7 @@ def _map_habit(habit_with_checkin: HabitWithCheckin) -> TodoItem:
     habit = habit_with_checkin.habit
     checkin = habit_with_checkin.checkin
     description = habit.encouragement or None
-    if habit.type == "Real":
+    if habit.type == "Real" or habit.goal > 1:
         value = checkin.value if checkin else 0
         progress = f"{value:g}/{habit.goal:g} {habit.unit or ''}".strip()
         description = f"{progress}\n{description}" if description else progress

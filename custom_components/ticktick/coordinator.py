@@ -2,7 +2,7 @@
 
 import asyncio
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 import logging
 
 from custom_components.ticktick.ticktick_api_python.models.habit import (
@@ -77,9 +77,14 @@ class HabitWithCheckin:
     checkin: HabitCheckinData | None
 
 
+def date_stamp(day: date) -> int:
+    """Return the date as TickTick YYYYMMDD stamp."""
+    return int(day.strftime("%Y%m%d"))
+
+
 def today_stamp() -> int:
     """Return today's date in Home Assistant time zone as YYYYMMDD stamp."""
-    return int(dt_util.now().strftime("%Y%m%d"))
+    return date_stamp(dt_util.now().date())
 
 
 class TickTickHabitCoordinator(DataUpdateCoordinator[list[HabitWithCheckin]]):
@@ -114,9 +119,13 @@ class TickTickHabitCoordinator(DataUpdateCoordinator[list[HabitWithCheckin]]):
             if not habits:
                 return []
 
-            stamp = today_stamp()
+            today = dt_util.now().date()
+            stamp = date_stamp(today)
+            # TickTick excludes the `to` stamp, so ask up to tomorrow
             habit_checkins = await self.api.get_habit_checkins(
-                [habit.id for habit in habits], stamp, stamp
+                [habit.id for habit in habits],
+                stamp,
+                date_stamp(today + timedelta(days=1)),
             )
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
